@@ -10,6 +10,7 @@ for a in $(seq -f "%03g" 3 3 81); do
   wget -P ${dir} https://dd.weather.gc.ca/model_gem_global/25km/grib2/lat_lon/00/${a}/CMC_glb_TMP_TGL_2_latlon.24x.24_${mydate}00_P${a}.grib2;
   wget -P ${dir} https://dd.weather.gc.ca/model_gem_global/25km/grib2/lat_lon/00/${a}/CMC_glb_PRATE_SFC_0_latlon.24x.24_${mydate}00_P${a}.grib2
   wget -P ${dir} https://dd.weather.gc.ca/model_gem_global/25km/grib2/lat_lon/00/${a}/CMC_glb_TCDC_SFC_0_latlon.24x.24_${mydate}00_P${a}.grib2
+  wget -P ${dir} https://dd.weather.gc.ca/model_gem_global/25km/grib2/lat_lon/00/${a}/CMC_glb_PRMSL_MSL_0_latlon.24x.24_${mydate}00_P${a}.grib2
 done
 
 ##### extract #####
@@ -45,4 +46,9 @@ psql -d world -c "ALTER TABLE places_gdps_utc ADD COLUMN IF NOT EXISTS day1_wx t
 psql -d world -c "UPDATE places_gdps_utc SET day1_wx = CASE WHEN day1_pmax > 0 AND day1_tmin > 0 THEN 'RAIN' WHEN day1_pmax > 0 AND day1_tmin <= 0 THEN 'SNOW' WHEN day1_pmax <= 0 AND day1_cmax <= 10 THEN 'CLEAR' WHEN day1_pmax <= 0 AND day1_cmax > 10 AND day1_cmax < 50 THEN 'PARTLY CLOUDY' WHEN day1_pmax <= 0 AND day1_cmax >= 50 THEN 'CLOUDY' ELSE '' END;"
 psql -d world -c "UPDATE places_gdps_utc SET day2_wx = CASE WHEN day2_pmax > 0 AND day2_tmin > 0 THEN 'RAIN' WHEN day2_pmax > 0 AND day2_tmin <= 0 THEN 'SNOW' WHEN day2_pmax <= 0 AND day2_cmax <= 10 THEN 'CLEAR' WHEN day2_pmax <= 0 AND day2_cmax > 10 AND day2_cmax < 50 THEN 'PARTLY CLOUDY' WHEN day2_pmax <= 0 AND day2_cmax >= 50 THEN 'CLOUDY' ELSE '' END;"
 psql -d world -c "UPDATE places_gdps_utc SET day3_wx = CASE WHEN day3_pmax > 0 AND day3_tmin > 0 THEN 'RAIN' WHEN day3_pmax > 0 AND day3_tmin <= 0 THEN 'SNOW' WHEN day3_pmax <= 0 AND day3_cmax <= 10 THEN 'CLEAR' WHEN day3_pmax <= 0 AND day3_cmax > 10 AND day3_cmax < 50 THEN 'PARTLY CLOUDY' WHEN day3_pmax <= 0 AND day3_cmax >= 50 THEN 'CLOUDY' ELSE '' END;"
+
+##### contours #####
+#mytime=$(echo "$(date +%H) - ($(date +%H)%3)" | bc | awk '{ printf("%03d", $1) }')
+#saga_cmd shapes_grid 5 -GRID $PWD/../data/gdps/CMC_glb_PRMSL_MSL_0_latlon.24x.24_2020100300_P${mytime}.grib2 -CONTOUR $PWD/../data/gdps/contour_pressure -SCALE 3 -ZSTEP 100
+#saga_cmd shapes_grid 9 -GRID ${file}_pressure.nc -MINIMA ${file}_pressure_minima -MAXIMA ${file}_pressure_maxima
 
