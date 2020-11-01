@@ -2,7 +2,7 @@
 
 ## Introduction
 
-Weather-streamer could be a 24h weather channel using BASH and ffmpeg for low cpu and bandwidth usage, mimicing old videotex/teletext systems.
+Weather-streamer is my collection of scripts to download and publish weather data.
 
 ## Files
 
@@ -10,4 +10,4 @@ Weather-streamer could be a 24h weather channel using BASH and ffmpeg for low cp
 
 [get_metar.sh](https://github.com/geographyclub/weather-streamer/blob/master/get_metar.sh) -- current conditions from worldwide METAR stations.
 
-[stream.sh](https://github.com/geographyclub/weather-streamer/blob/master/stream.sh) -- ffmpeg to YouTube.
+[streamer.sh](https://github.com/geographyclub/weather-streamer/blob/master/streamer.sh) -- imagemagick, ffmpeg and more.
