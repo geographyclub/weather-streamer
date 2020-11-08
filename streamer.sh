@@ -2,9 +2,11 @@
 #get_metar.sh
 #get_gdps.sh
 
-### make gif
-#convert -delay 50 $PWD/../data/qgis/places/*.png $PWD/../places_$(date +%m_%d_%H%M).gif
-#convert -colorspace "Gray" -delay 2 $PWD/../data/weather/places/*.png -coalesce -layers OptimizePlus -layers RemoveZero miff:- | convert -duplicate 1,-1-0 -loop 0 - -coalesce -layers OptimizePlus -layers RemoveZero $PWD/../data/weather/test.gif
+### cpt color file
+color=panoply
+gmt makecpt -N -Fr -C${color} -T0/100 |  awk '{ print $1, $2 }' | sed -e 's/ /% /g' -e 's/\// /g' > $PWD/../data/colors/${color}.txt
+
+gmt makecpt -Cwhite,blue -T3/10 > cold.cpt
 
 ### qgis slideshow
 files=$PWD/../data/qgis/places/%06d.png
@@ -14,11 +16,12 @@ ffmpeg -y -stream_loop 1 -r ${rate} -i ${files} -s ${width}x${height} -c:v libx2
 ### gdps slideshow
 height=512
 width=1024
-samplemethod=cubicspline
-colorfile=$PWD/../data/colors/white-black.txt
+samplemethod=cubicspline #nearest
+#colorfile=$PWD/../data/colors/white-black.txt
+colorfile=/home/steve/git/data/colors/panoply.txt
 input0=$PWD/../data/maps/HYP_HR_SR_OB_DR_1500_751.tif
 rate=10
-field=TCDC
+field=TMP #PRATE / PRMSL / TCDC / TMP
 proj=$(echo '+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs')
 #proj=$(echo '+proj=ortho +lat_0=-10 +lon_0=-60')
 # make input(s)
@@ -33,11 +36,25 @@ ls $PWD/../data/gdps/*${field}*.grib2 | while read file; do
   gdaldem color-relief -alpha -f 'GRIB' -of 'GTiff' --config GDAL_PAM_ENABLED NO ${file} ${colorfile} /vsistdout/ | gdalwarp -overwrite -f 'GTiff' -of 'GTiff' -ts ${width} ${height} -r ${samplemethod} --config GDAL_PAM_ENABLED NO -co PROFILE=BASELINE /vsistdin/ $PWD/../data/tmp/$(printf "%06d" ${counter}).tif
   (( counter = counter + 1 ))
 done
+
+
+
+
+# imagemagick
+ls $PWD/../data/tmp/*.tif | while read file; do
+  convert -quiet -gravity Center -composite -compose Screen ${input0%.*}_${width}_${height}_${samplemethod}.tif ${file} ${file}
+done
+
 # make video
-# earth overlay
+# multiple inputs
 #ffmpeg -y -r ${rate} -i ${input0%.*}_${width}_${height}_${samplemethod}.tif -i $PWD/../data/tmp/%06d.tif -filter_complex "[0:v][1:v] overlay=W-w:H-h" -s ${width}x${height} -c:v libx264 -crf 23 -pix_fmt yuv420p -preset fast -threads 0 -movflags +faststart $PWD/../${field}_$(date +%m_%d_%H%M).mp4
-# no overlay
-ffmpeg -y -r ${rate} -i $PWD/../data/tmp/%06d.tif -s ${width}x${height} -c:v libx264 -crf 23 -pix_fmt yuv420p -preset fast -threads 0 -movflags +faststart $PWD/../${field}_$(date +%m_%d_%H%M).mp4
+# one input
+#ffmpeg -y -r ${rate} -i $PWD/../data/tmp/%06d.tif -s ${width}x${height} -c:v libx264 -crf 23 -pix_fmt yuv420p -preset fast -threads 0 -movflags +faststart $PWD/../${field}_$(date +%m_%d_%H%M).mp4
+# interpolate
+ffmpeg -y -r ${rate}/5 -i $PWD/../data/tmp/%06d.tif -vf "minterpolate='fps=120'" -s ${width}x${height} -c:v libx264 -crf 23 -pix_fmt yuv420p -preset fast -threads 0 -movflags +faststart $PWD/../${field}_$(date +%m_%d_%H%M).mp4
+
+
+
 
 ### scroller
 height=512
@@ -76,18 +93,27 @@ ffmpeg -y -f lavfi -i color=c=white:s=${width}x${height} -vf "drawtext=fontsize=
 
 # subset data 
 
+### make gif
+#convert -delay 50 $PWD/../data/qgis/places/*.png $PWD/../places_$(date +%m_%d_%H%M).gif
+#convert -colorspace "Gray" -delay 2 $PWD/../data/weather/places/*.png -coalesce -layers OptimizePlus -layers RemoveZero miff:- | convert -duplicate 1,-1-0 -loop 0 - -coalesce -layers OptimizePlus -layers RemoveZero $PWD/../data/weather/test.gif
 
 ### imagemagick
-  convert $PWD/../data/weather/tcdc/$(printf "%06d" ${counter}).png -fill yellow -font '/home/steve/.fonts/fonts-master/ofl/sourcecodepro/SourceCodePro-Regular.ttf' -pointsize 20 -gravity SouthEast -annotate 0 ${time} $PWD/../data/weather/tcdc/$(printf "%06d" ${counter})_color.png
+height=512
+width=1024
+geom=1
+blend=Screen
+# crop
+#convert -gravity Center -geometry $((width/geom))x$((height/geom))^ -crop $((width/geom))x$((height/geom))+0+0 -composite -compose ${blend} $1 /home/steve/Downloads/tmp/overlay.png /home/steve/Downloads/$(basename "${1%.*}")_$(basename "${2%.*}").png
+convert -gravity Center -size ${width}x${height} -composite -compose ${blend}  /home/steve/Downloads/tmp/overlay.png /home/steve/Downloads/$(basename "${1%.*}")_$(basename "${2%.*}").png
+
+convert $PWD/../data/weather/tcdc/$(printf "%06d" ${counter}).png -fill yellow -font '/home/steve/.fonts/fonts-master/ofl/sourcecodepro/SourceCodePro-Regular.ttf' -pointsize 20 -gravity SouthEast -annotate 0 ${time} $PWD/../data/weather/tcdc/$(printf "%06d" ${counter})_color.png
 
 ### colorize
 #convert -alpha off /home/steve/git/data/weather/tcdc/000001.jpg \( /home/steve/git/data/weather/colors/ice-sea.png -flip \) -channel RGB -interpolate Integer -clut /home/steve/git/data/weather/000001_colored.jpg
 #convert -alpha off /home/steve/git/data/weather/tcdc/000001.jpg /home/steve/git/data/weather/colors/ice-sea.png -channel RGB -interpolate Integer -clut /home/steve/git/data/weather/000001_colored.jpg
 
-
 ##### caption0 #####
 psql -d world -c "\COPY (SELECT a.ogc_fid, ROUND(ST_X(ST_ShiftLongitude(ST_MakePoint(a.longitude, a.latitude,4326)))), ROUND(ST_Y(ST_ShiftLongitude(ST_MakePoint(a.longitude, a.latitude,4326)))), a.nameascii, round(b.temp), b.wx_full, CASE WHEN round(b.temp) < c.day1_tmin THEN round(b.temp) ELSE c.day1_tmin END, CASE WHEN round(b.temp) > c.day1_tmax THEN round(b.temp) ELSE c.day1_tmax END, c.day1_wx, c.day2_tmin, c.day2_tmax, c.day2_wx, c.day3_tmin, c.day3_tmax, c.day3_wx FROM places a, metar b, places_gdps_utc c WHERE a.metar_id = b.station_id AND a.ogc_fid = c.ogc_fid) TO STDOUT DELIMITER E'\t';" | while IFS=$'\t' read -a array; do echo ${array[0]}; done
-
 
 ##### stream0 #####
 stream=stream0
@@ -120,11 +146,12 @@ convert -gravity Center -append $(ls -v $PWD/../data/tmp/*.ppm) $PWD/../data/tmp
 
 #-e 's/<\/svg>/<text text-anchor="end" fill="#000000" stroke="none" fill-opacity="1" font-size="20" font-weight="870" xml:space="preserve" font-family="Montserrat" font-style="normal" x="99%" y="99%">Updated:'"${date_metar}"'<\/text>\n<\/svg>/g'
 
-#ffmpeg -i <input> -vf "drawtext=text='%{localtime\:%T}'" -f flv <output>
+# time
+#ffmpeg -i <input> -vf "drawtext=text='%{localtime\:%T}'"
 
 # no-file bash
 #-i <(for i in {1..4}; do printf "file '%s'\n" input.mp4; done)
 
 # border
-drawbox=t=5:c=black
+#drawbox=t=5:c=black
 
