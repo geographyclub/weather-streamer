@@ -2,11 +2,14 @@
 #get_metar.sh
 #get_gdps.sh
 
-### cpt color file
-color=panoply
-gmt makecpt -N -Fr -C${color} -T0/100 |  awk '{ print $1, $2 }' | sed -e 's/ /% /g' -e 's/\// /g' > $PWD/../data/colors/${color}.txt
-
-gmt makecpt -Cwhite,blue -T3/10 > cold.cpt
+### color (cpt)
+#color=panoply
+#gmt makecpt -N -Fr -C${color} -T0/100 |  awk '{ print $1, $2 }' | sed -e 's/ /% /g' -e 's/\// /g' > $PWD/../data/colors/${color}.txt
+#gmt makecpt -Cwhite,blue -T3/10 > cold.cpt
+### color (imagemagick)
+#convert -size 10x1024 'gradient:rgba(255,255,255,0.0)-rgba(255,0,0,1)' $PWD/../data/colors/none-red.png
+#convert -size 10x1024 xc:white -sparse-color Barycentric '0,0 rgba(255,255,255,0.0) 0,%h rgba(255,0,0,1)' -function polynomial 4,-4,1 $PWD/../data/colors/none-red-none.png
+convert -size 10x100 xc:black xc:purple xc:yellow -append -colorspace RGB -blur 0x20 -colorspace sRGB $PWD/../data/colors/black-purple-yellow.png
 
 ### qgis slideshow
 files=$PWD/../data/qgis/places/%06d.png
@@ -17,11 +20,12 @@ ffmpeg -y -stream_loop 1 -r ${rate} -i ${files} -s ${width}x${height} -c:v libx2
 height=512
 width=1024
 samplemethod=cubicspline #nearest
-#colorfile=$PWD/../data/colors/white-black.txt
-colorfile=/home/steve/git/data/colors/panoply.txt
+colorfile=$PWD/../data/colors/white-black.txt
+#colorfile=/home/steve/git/data/colors/panoply.txt
 input0=$PWD/../data/maps/HYP_HR_SR_OB_DR_1500_751.tif
 rate=10
-field=TMP #PRATE / PRMSL / TCDC / TMP
+time=20
+field=TCDC #PRATE / PRMSL / TCDC / TMP
 proj=$(echo '+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs')
 #proj=$(echo '+proj=ortho +lat_0=-10 +lon_0=-60')
 # make input(s)
@@ -36,10 +40,6 @@ ls $PWD/../data/gdps/*${field}*.grib2 | while read file; do
   gdaldem color-relief -alpha -f 'GRIB' -of 'GTiff' --config GDAL_PAM_ENABLED NO ${file} ${colorfile} /vsistdout/ | gdalwarp -overwrite -f 'GTiff' -of 'GTiff' -ts ${width} ${height} -r ${samplemethod} --config GDAL_PAM_ENABLED NO -co PROFILE=BASELINE /vsistdin/ $PWD/../data/tmp/$(printf "%06d" ${counter}).tif
   (( counter = counter + 1 ))
 done
-
-
-
-
 # imagemagick
 ls $PWD/../data/tmp/*.tif | while read file; do
   convert -quiet -gravity Center -composite -compose Screen ${input0%.*}_${width}_${height}_${samplemethod}.tif ${file} ${file}
@@ -53,14 +53,11 @@ done
 # interpolate
 ffmpeg -y -r ${rate}/5 -i $PWD/../data/tmp/%06d.tif -vf "minterpolate='fps=120'" -s ${width}x${height} -c:v libx264 -crf 23 -pix_fmt yuv420p -preset fast -threads 0 -movflags +faststart $PWD/../${field}_$(date +%m_%d_%H%M).mp4
 
-
-
-
 ### scroller
 height=512
 width=1024
 color1=None
-color2=white@0.0
+color2=white
 fontcolor=black
 #fontfile=/home/steve/.fonts/fonts-master/ofl/sourcecodepro/SourceCodePro-Regular.ttf
 fontfile=/home/steve/.fonts/fonts-master/ofl/montserrat/Montserrat-SemiBold.ttf
@@ -69,6 +66,7 @@ time=20
 psql -d world -c "\COPY (SELECT a.nameascii || ' ' || round(b.temp) || '°C' FROM places a, metar b WHERE a.scalerank IN (0) AND a.metar_id = b.station_id) TO STDOUT" > $PWD/../data/tmp/scroller.txt
 convert -gravity Center -size ${width}x -background ${color1} -fill ${fontcolor} -font "${fontfile}" -pointsize 40 caption:@$PWD/../data/tmp/scroller.txt $PWD/../data/tmp/scroller.png
 # make video
+# with titles
 ffmpeg -y -f lavfi -i color=c=${color2}:s=${width}x${height} -i $PWD/../data/tmp/scroller.png -filter_complex "[0:v][1:v] overlay=W-w:H-((H+h)/(${time}/t)) [v]; [v] drawbox=x=0:y=0:w=iw:h=60:color=${color2}:t=max [v]; [v] drawbox=x=0:y=(ih-60):w=iw:h=60:color=${color2}:t=max [v]; [v] drawtext=fontsize=40: fontcolor=${fontcolor}: fontfile=${fontfile}: text='GCLUB WORLD WEATHER': x=(w-text_w)/2: y=15 [v]; [v] drawtext=fontsize=40: fontcolor=${fontcolor}: fontfile=${fontfile}: text='%{localtime\:%a %D %H%M %Z}': x=(w-text_w)/2: y=h-(line_h)-5 [v]" -map "[v]" -t ${time} -s ${width}x${height} -c:v libx264 -crf 23 -pix_fmt yuv420p -preset fast -threads 0 -movflags +faststart $PWD/../scroller_$(date +%m_%d_%H%M).mp4
 
 
