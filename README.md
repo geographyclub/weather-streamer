@@ -2,7 +2,7 @@
 
 ## Introduction
 
-A project to download and stream weather data online.
+The goal of weather-streamer is to automate the downloading and streaming of weather reports online.
 
 ## Files
 
