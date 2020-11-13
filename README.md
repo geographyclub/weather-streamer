@@ -2,7 +2,7 @@
 
 ## Introduction
 
-The goal of weather-streamer is to automate the downloading and streaming of weather reports online.
+The goal of weather-streamer is to automate the processing and streaming of weather reports online.
 
 ## Files
 
