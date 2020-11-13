@@ -2,7 +2,7 @@
 
 ## Introduction
 
-Weather-streamer is my collection of scripts to download and publish weather data.
+A project to download and stream weather data online.
 
 ## Files
 
