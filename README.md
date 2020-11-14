@@ -2,7 +2,7 @@
 
 ## Introduction
 
-Weather-streamer is my collection of scripts to download and publish weather data.
+The goal of weather-streamer is to automate the processing of open weather data and video streaming of weather reports.
 
 ## Files
 
