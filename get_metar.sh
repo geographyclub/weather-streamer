@@ -36,6 +36,7 @@ psql -d world -c "UPDATE places a SET metar_id = (SELECT b.station_id FROM ${myt
 psql -d world -c "UPDATE places a SET metar_id2 = (SELECT b.station_id FROM ${mytable} b WHERE a.metar_id != b.station_id ORDER BY a.wkb_geometry <-> b.wkb_geometry2 LIMIT 1);"
 psql -d world -c "UPDATE places a SET wx_full = b.wx_full from metar b WHERE a.metar_id = b.station_id;"
 psql -d world -c "UPDATE places a SET wx_full = b.wx_full from metar b WHERE a.wx_full IS NULL AND a.metar_id2 = b.station_id;"
+psql -d world -c "UPDATE places a SET wx_full = b.wx_full from metar b WHERE a.wx_full IS NULL AND a.metar_id2 = b.station_id;"
 
 # wind
 #psql -d world -c "ALTER TABLE ${mytable} ADD COLUMN wind_full text;"

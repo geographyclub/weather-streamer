@@ -6,52 +6,40 @@
 #color=panoply
 #gmt makecpt -N -Fr -C${color} -T0/100 |  awk '{ print $1, $2 }' | sed -e 's/ /% /g' -e 's/\// /g' > $PWD/../data/colors/${color}.txt
 #gmt makecpt -Cwhite,blue -T3/10 > cold.cpt
+
 ### color (imagemagick)
 #convert -size 10x1024 'gradient:rgba(255,255,255,0.0)-rgba(255,0,0,1)' $PWD/../data/colors/none-red.png
 #convert -size 10x1024 xc:white -sparse-color Barycentric '0,0 rgba(255,255,255,0.0) 0,%h rgba(255,0,0,1)' -function polynomial 4,-4,1 $PWD/../data/colors/none-red-none.png
-convert -size 10x100 xc:black xc:purple xc:yellow -append -colorspace RGB -blur 0x20 -colorspace sRGB $PWD/../data/colors/black-purple-yellow.png
+#convert -size 10x100 xc:black xc:purple xc:yellow -append -colorspace RGB -blur 0x20 -colorspace sRGB $PWD/../data/colors/black-purple-yellow.png
+convert /home/steve/git/data/colors/cpt-city/dca/alarm.p1.0.2.svg -fuzz 20% -trim -rotate -90 -resize 10x1024! -depth 16 -colorspace rgb /home/steve/Downloads/alarm.p1.0.2.png
+
+### overlay text
+# video params
+placename=Toronto
+videoname=/home/steve/git/TCDC_11_13_1352.mp4
+height=512
+width=1024
+# text params
+color1=None
+color2=white
+fontcolor=white
+undercolor=black
+#fontfile=/home/steve/.fonts/fonts-master/ofl/sourcecodepro/SourceCodePro-Regular.ttf
+fontfile=/home/steve/.fonts/fonts-master/ofl/montserrat/Montserrat-Bold.ttf
+
+### text to image
+psql -d world -c "\COPY (SELECT CONCAT(UPPER(a.nameascii), ', ', UPPER(a.adm1name), ', ', a.iso_a2), CONCAT('Now: ', round(b.temp), '°C ', a.wx_full), CONCAT('$(date +%a): ', CASE WHEN round(b.temp) < c.day1_tmin THEN round(b.temp) ELSE c.day1_tmin END, '/', CASE WHEN round(b.temp) > c.day1_tmax THEN round(b.temp) ELSE c.day1_tmax END, '°C ', INITCAP(c.day1_wx)), CONCAT('$(date --date="+1 day" +%a): ', c.day2_tmin, '/', c.day2_tmax, '°C ', INITCAP(c.day2_wx)), CONCAT('$(date --date="+2 day" +%a): ', c.day3_tmin, '/', c.day3_tmax, '°C ', INITCAP(c.day3_wx)) FROM places a, metar b, places_gdps_utc c WHERE a.metar_id = b.station_id AND a.ogc_fid = c.ogc_fid AND a.nameascii = '${placename}') TO STDOUT;" | tr '\t' '\n' | head -c -1 | convert -gravity Center -size ${width}x${height} -background ${color1} -fill ${fontcolor} -undercolor ${undercolor} -font "${fontfile}" -pointsize 40 -interline-spacing 0.8 caption:@- $PWD/../data/tmp/weather.png
+
+### overlay video
+ffmpeg -y -f lavfi -i color=c=${color2}:s=${width}x${height} -i $PWD/../data/tmp/scroller.png -filter_complex "[0:v][1:v] overlay=W-w:H-((H+h)/(${time}/t)) [v]; [v] drawbox=x=0:y=0:w=iw:h=60:color=${color2}:t=max [v]; [v] drawbox=x=0:y=(ih-60):w=iw:h=60:color=${color2}:t=max [v]; [v] drawtext=fontsize=40: fontcolor=${fontcolor}: fontfile=${fontfile}: text='GCLUB WORLD WEATHER': x=(w-text_w)/2: y=15 [v]; [v] drawtext=fontsize=40: fontcolor=${fontcolor}: fontfile=${fontfile}: text='%{localtime\:%a %D %H%M %Z}': x=(w-text_w)/2: y=h-(line_h)-5 [v]" -map "[v]" -t ${time} -s ${width}x${height} -c:v libx264 -crf 23 -pix_fmt yuv420p -preset fast -threads 0 -movflags +faststart $PWD/../scroller_$(date +%m_%d_%H%M).mp4
+
+
+
 
 ### qgis slideshow
 files=$PWD/../data/qgis/places/%06d.png
 rate=2
 ffmpeg -y -stream_loop 1 -r ${rate} -i ${files} -s ${width}x${height} -c:v libx264 -crf 23 -pix_fmt yuv420p -preset fast -threads 0 -movflags +faststart $PWD/../$(basename $(dirname ${files%.*}))_$(date +%m_%d_%H%M).mp4
-
-### gdps slideshow
-height=512
-width=1024
-samplemethod=cubicspline #nearest
-colorfile=$PWD/../data/colors/white-black.txt
-#colorfile=/home/steve/git/data/colors/panoply.txt
-input0=$PWD/../data/maps/HYP_HR_SR_OB_DR_1500_751.tif
-rate=10
-time=20
-field=TCDC #PRATE / PRMSL / TCDC / TMP
-proj=$(echo '+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs')
-#proj=$(echo '+proj=ortho +lat_0=-10 +lon_0=-60')
-# make input(s)
-if [ ! -f ${input0%.*}_${width}_${height}_${samplemethod}.tif ]; then
-  gdalwarp -overwrite -ts ${width} ${height} -r ${samplemethod} -t_srs "${proj}" ${input0} ${input0%.*}_${width}_${height}_${samplemethod}.tif
-  exit 0
-fi
-# make frames 
-counter=1
-rm -f $PWD/../data/tmp/*.tif
-ls $PWD/../data/gdps/*${field}*.grib2 | while read file; do
-  gdaldem color-relief -alpha -f 'GRIB' -of 'GTiff' --config GDAL_PAM_ENABLED NO ${file} ${colorfile} /vsistdout/ | gdalwarp -overwrite -f 'GTiff' -of 'GTiff' -ts ${width} ${height} -r ${samplemethod} --config GDAL_PAM_ENABLED NO -co PROFILE=BASELINE /vsistdin/ $PWD/../data/tmp/$(printf "%06d" ${counter}).tif
-  (( counter = counter + 1 ))
-done
-# imagemagick
-ls $PWD/../data/tmp/*.tif | while read file; do
-  convert -quiet -gravity Center -composite -compose Screen ${input0%.*}_${width}_${height}_${samplemethod}.tif ${file} ${file}
-done
-
-# make video
-# multiple inputs
-#ffmpeg -y -r ${rate} -i ${input0%.*}_${width}_${height}_${samplemethod}.tif -i $PWD/../data/tmp/%06d.tif -filter_complex "[0:v][1:v] overlay=W-w:H-h" -s ${width}x${height} -c:v libx264 -crf 23 -pix_fmt yuv420p -preset fast -threads 0 -movflags +faststart $PWD/../${field}_$(date +%m_%d_%H%M).mp4
-# one input
-#ffmpeg -y -r ${rate} -i $PWD/../data/tmp/%06d.tif -s ${width}x${height} -c:v libx264 -crf 23 -pix_fmt yuv420p -preset fast -threads 0 -movflags +faststart $PWD/../${field}_$(date +%m_%d_%H%M).mp4
-# interpolate
-ffmpeg -y -r ${rate}/5 -i $PWD/../data/tmp/%06d.tif -vf "minterpolate='fps=120'" -s ${width}x${height} -c:v libx264 -crf 23 -pix_fmt yuv420p -preset fast -threads 0 -movflags +faststart $PWD/../${field}_$(date +%m_%d_%H%M).mp4
 
 ### scroller
 height=512
