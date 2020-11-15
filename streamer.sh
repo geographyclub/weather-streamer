@@ -13,69 +13,19 @@
 #convert -size 10x100 xc:black xc:purple xc:yellow -append -colorspace RGB -blur 0x20 -colorspace sRGB $PWD/../data/colors/black-purple-yellow.png
 convert /home/steve/git/data/colors/cpt-city/dca/alarm.p1.0.2.svg -fuzz 20% -trim -rotate -90 -resize 10x1024! -depth 16 -colorspace rgb /home/steve/Downloads/alarm.p1.0.2.png
 
-### overlay text
-# video params
-placename=Toronto
-videoname=/home/steve/git/TCDC_11_13_1352.mp4
-height=512
-width=1024
-# text params
-color1=None
-color2=white
-fontcolor=white
-undercolor=black
-#fontfile=/home/steve/.fonts/fonts-master/ofl/sourcecodepro/SourceCodePro-Regular.ttf
-fontfile=/home/steve/.fonts/fonts-master/ofl/montserrat/Montserrat-Bold.ttf
-
-### text to image
-psql -d world -c "\COPY (SELECT CONCAT(UPPER(a.nameascii), ', ', UPPER(a.adm1name), ', ', a.iso_a2), CONCAT('Now: ', round(b.temp), '°C ', a.wx_full), CONCAT('$(date +%a): ', CASE WHEN round(b.temp) < c.day1_tmin THEN round(b.temp) ELSE c.day1_tmin END, '/', CASE WHEN round(b.temp) > c.day1_tmax THEN round(b.temp) ELSE c.day1_tmax END, '°C ', INITCAP(c.day1_wx)), CONCAT('$(date --date="+1 day" +%a): ', c.day2_tmin, '/', c.day2_tmax, '°C ', INITCAP(c.day2_wx)), CONCAT('$(date --date="+2 day" +%a): ', c.day3_tmin, '/', c.day3_tmax, '°C ', INITCAP(c.day3_wx)) FROM places a, metar b, places_gdps_utc c WHERE a.metar_id = b.station_id AND a.ogc_fid = c.ogc_fid AND a.nameascii = '${placename}') TO STDOUT;" | tr '\t' '\n' | head -c -1 | convert -gravity Center -size ${width}x${height} -background ${color1} -fill ${fontcolor} -undercolor ${undercolor} -font "${fontfile}" -pointsize 40 -interline-spacing 0.8 caption:@- $PWD/../data/tmp/weather.png
-
-### overlay video
-ffmpeg -y -f lavfi -i color=c=${color2}:s=${width}x${height} -i $PWD/../data/tmp/scroller.png -filter_complex "[0:v][1:v] overlay=W-w:H-((H+h)/(${time}/t)) [v]; [v] drawbox=x=0:y=0:w=iw:h=60:color=${color2}:t=max [v]; [v] drawbox=x=0:y=(ih-60):w=iw:h=60:color=${color2}:t=max [v]; [v] drawtext=fontsize=40: fontcolor=${fontcolor}: fontfile=${fontfile}: text='GCLUB WORLD WEATHER': x=(w-text_w)/2: y=15 [v]; [v] drawtext=fontsize=40: fontcolor=${fontcolor}: fontfile=${fontfile}: text='%{localtime\:%a %D %H%M %Z}': x=(w-text_w)/2: y=h-(line_h)-5 [v]" -map "[v]" -t ${time} -s ${width}x${height} -c:v libx264 -crf 23 -pix_fmt yuv420p -preset fast -threads 0 -movflags +faststart $PWD/../scroller_$(date +%m_%d_%H%M).mp4
-
-
-
-
 ### qgis slideshow
 files=$PWD/../data/qgis/places/%06d.png
 rate=2
 ffmpeg -y -stream_loop 1 -r ${rate} -i ${files} -s ${width}x${height} -c:v libx264 -crf 23 -pix_fmt yuv420p -preset fast -threads 0 -movflags +faststart $PWD/../$(basename $(dirname ${files%.*}))_$(date +%m_%d_%H%M).mp4
 
-### scroller
-height=512
-width=1024
-color1=None
-color2=white
-fontcolor=black
-#fontfile=/home/steve/.fonts/fonts-master/ofl/sourcecodepro/SourceCodePro-Regular.ttf
-fontfile=/home/steve/.fonts/fonts-master/ofl/montserrat/Montserrat-SemiBold.ttf
-time=20
-# make text
-psql -d world -c "\COPY (SELECT a.nameascii || ' ' || round(b.temp) || '°C' FROM places a, metar b WHERE a.scalerank IN (0) AND a.metar_id = b.station_id) TO STDOUT" > $PWD/../data/tmp/scroller.txt
-convert -gravity Center -size ${width}x -background ${color1} -fill ${fontcolor} -font "${fontfile}" -pointsize 40 caption:@$PWD/../data/tmp/scroller.txt $PWD/../data/tmp/scroller.png
-# make video
-# with titles
-ffmpeg -y -f lavfi -i color=c=${color2}:s=${width}x${height} -i $PWD/../data/tmp/scroller.png -filter_complex "[0:v][1:v] overlay=W-w:H-((H+h)/(${time}/t)) [v]; [v] drawbox=x=0:y=0:w=iw:h=60:color=${color2}:t=max [v]; [v] drawbox=x=0:y=(ih-60):w=iw:h=60:color=${color2}:t=max [v]; [v] drawtext=fontsize=40: fontcolor=${fontcolor}: fontfile=${fontfile}: text='GCLUB WORLD WEATHER': x=(w-text_w)/2: y=15 [v]; [v] drawtext=fontsize=40: fontcolor=${fontcolor}: fontfile=${fontfile}: text='%{localtime\:%a %D %H%M %Z}': x=(w-text_w)/2: y=h-(line_h)-5 [v]" -map "[v]" -t ${time} -s ${width}x${height} -c:v libx264 -crf 23 -pix_fmt yuv420p -preset fast -threads 0 -movflags +faststart $PWD/../scroller_$(date +%m_%d_%H%M).mp4
-
-
-enable=lt(mod(t\,3)\,1)
-
-### ticker
-height=512
-width=1024
-rate=100
-psql -d world -c "\COPY (SELECT a.name || ' ' || round(b.temp) || '°C / ' FROM places a, metar b WHERE a.scalerank IN (0) AND a.metar_id = b.station_id) TO STDOUT" | tr -d '\n' > $PWD/../data/tmp/ticker.txt
-ffmpeg -y -f lavfi -i color=c=white:s=${width}x${height} -vf "drawtext=fontsize=30: fontfile=/home/steve/.fonts/fonts-master/ofl/overpassmono/OverpassMono-Regular.ttf: textfile=$PWD/../data/tmp/ticker.txt: x=${width}-(${rate}*t): y=h-(line_h)" -c:v libx264 -crf 23 -pix_fmt yuv420p -preset fast -threads 0 -movflags +faststart $PWD/../ticker_$(date +%m_%d_%H%M).mp4
-
+# scroller
+#psql -d world -c "\COPY (SELECT a.nameascii || ' ' || round(b.temp) || '°C' FROM places a, metar b WHERE a.scalerank IN (0) AND a.metar_id = b.station_id) TO STDOUT;" | convert -gravity Center -size ${width}x -background ${color1} -fill ${fontcolor} -font "${fontfile}" -pointsize 40 caption:@- $PWD/../data/tmp/scroller1.png
+#ffmpeg -y -f lavfi -i color=c=${color2}:s=${width}x${height} -i $PWD/../data/tmp/scroller.png -filter_complex "[0:v][1:v] overlay=W-w:H-((H+h)/(${time}/t)) [v]; [v] drawbox=x=0:y=0:w=iw:h=60:color=${color2}:t=max [v]; [v] drawbox=x=0:y=(ih-60):w=iw:h=60:color=${color2}:t=max [v]; [v] drawtext=fontsize=40: fontcolor=${fontcolor}: fontfile=${fontfile}: text='GCLUB WORLD WEATHER': x=(w-text_w)/2: y=15 [v]; [v] drawtext=fontsize=40: fontcolor=${fontcolor}: fontfile=${fontfile}: text='%{localtime\:%a %D %H%M %Z}': x=(w-text_w)/2: y=h-(line_h)-5 [v]" -map "[v]" -t ${time} -s ${width}x${height} -c:v libx264 -crf 23 -pix_fmt yuv420p -preset fast -threads 0 -movflags +faststart $PWD/../scroller_$(date +%m_%d_%H%M).mp4
 
 
 ############## TODO ##############
 
-# title
-
 # captions
-
-# ticker
 
 # subset data 
 
@@ -140,4 +90,8 @@ convert -gravity Center -append $(ls -v $PWD/../data/tmp/*.ppm) $PWD/../data/tmp
 
 # border
 #drawbox=t=5:c=black
+
+# timed
+#enable=lt(mod(t\,3)\,1)
+
 
