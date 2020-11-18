@@ -2,9 +2,11 @@
 #get_metar.sh
 #get_gdps.sh
 
+#!/bin/bash
+
 ### params
-place='Toronto'
-continent='North America'
+place=''
+continent=''
 extent_x=40
 extent_y=$((${extent_x}/2))
 height=512
@@ -25,33 +27,44 @@ undercolor=None
 fontfile=/home/steve/.fonts/fonts-master/ofl/montserrat/Montserrat-Bold.ttf
 fontsize1='h/10'
 
-##### ticker #####
-### text to image
-#psql -d world -c "\COPY (SELECT a.nameascii || ' ' || round(b.temp) || '°C / ' FROM places a, metar b WHERE a.scalerank IN (0) AND a.continent IN ('${continent}') AND a.metar_id = b.station_id) TO STDOUT;" | tr -d '\n' | sed 's/ \/ $//' | convert -gravity West -background ${color1} -fill ${fontcolor} -undercolor ${undercolor} -font "${fontfile}" -size x$(( ${height} / 4 )) label:@- $PWD/../data/tmp/ticker0.png
-#psql -d world -c "\COPY (SELECT a.nameascii || ' ' || round(b.temp) || '°C / ' FROM places a, metar b WHERE a.scalerank IN (1) AND a.continent IN ('${continent}') AND a.metar_id = b.station_id) TO STDOUT;" | tr -d '\n' | sed 's/ \/ $//' | convert -gravity West -background ${color1} -fill ${fontcolor} -undercolor ${undercolor} -font "${fontfile}" -size x$(( ${height} / 6 )) label:@- $PWD/../data/tmp/ticker1.png
-#psql -d world -c "\COPY (SELECT a.nameascii || ' ' || round(b.temp) || '°C / ' FROM places a, metar b WHERE a.scalerank IN (2) AND a.continent IN ('${continent}') AND a.metar_id = b.station_id) TO STDOUT;" | tr -d '\n' | sed 's/ \/ $//' | convert -gravity West -background ${color1} -fill ${fontcolor} -undercolor ${undercolor} -font "${fontfile}" -size x$(( ${height} / 8 )) label:@- $PWD/../data/tmp/ticker2.png
-### text
-psql -d world -c "\COPY (SELECT a.nameascii || ' ' || round(b.temp) || '°C / ' FROM places a, metar b WHERE a.scalerank IN (0) AND a.continent IN ('${continent}') AND a.metar_id = b.station_id) TO STDOUT;" | tr -d '\n' | sed 's/ \/ $//' > $PWD/../data/tmp/ticker0.txt
-psql -d world -c "\COPY (SELECT a.nameascii || ' ' || round(b.temp) || '°C / ' FROM places a, metar b WHERE a.scalerank IN (1) AND a.continent IN ('${continent}') AND a.metar_id = b.station_id) TO STDOUT;" | tr -d '\n' | sed 's/ \/ $//' > $PWD/../data/tmp/ticker1.txt
-psql -d world -c "\COPY (SELECT a.nameascii || ' ' || round(b.temp) || '°C / ' FROM places a, metar b WHERE a.scalerank IN (2) AND a.continent IN ('${continent}') AND a.metar_id = b.station_id) TO STDOUT;" | tr -d '\n' | sed 's/ \/ $//' > $PWD/../data/tmp/ticker2.txt
+### clip extent
+if [ -z "${place}" ]; then
+  extent=(-180 -90 180 90)
+  else extent=($(psql -d world -c "\COPY (SELECT ROUND(ST_X(ST_Translate(wkb_geometry,-${extent_x},0))), ROUND(ST_Y(ST_Translate(wkb_geometry,0,-${extent_y}))), ROUND(ST_X(ST_Translate(wkb_geometry,${extent_x},0))), ROUND(ST_Y(ST_Translate(wkb_geometry,0,${extent_y}))) FROM places WHERE nameascii = '${place}') TO STDOUT DELIMITER ' ';"))
+fi
+
+### make ticker
+#psql -d world -c "\COPY (SELECT a.nameascii || ' ' || round(b.temp) || '°C / ' FROM places a, metar b WHERE a.scalerank IN (0) AND a.continent IN ('${continent}') AND a.metar_id = b.station_id) TO STDOUT;" | tr -d '\n' | sed 's/ \/ $//' > $PWD/../data/tmp/ticker0.txt
+#psql -d world -c "\COPY (SELECT a.nameascii || ' ' || round(b.temp) || '°C ' || a.wx_full || ' ' || '$(date +%a):' || CASE WHEN round(b.temp) < c.day1_tmin THEN round(b.temp) ELSE c.day1_tmin END || '/' || CASE WHEN round(b.temp) > c.day1_tmax THEN round(b.temp) ELSE c.day1_tmax END || '°C ' || INITCAP(c.day1_wx) || ' ' || '$(date --date="+1 day" +%a):' || c.day2_tmin || '/' || c.day2_tmax || '°C ' || INITCAP(c.day2_wx) || ' ' || '$(date --date="+2 day" +%a):' || c.day3_tmin || '/' || c.day3_tmax || '°C ' || INITCAP(c.day3_wx) FROM places a, metar b, places_gdps_utc c WHERE a.metar_id = b.station_id AND a.ogc_fid = c.ogc_fid AND a.nameascii = '${place}') TO STDOUT" > $PWD/../data/tmp/ticker.txt
+
+### make overlay
+
+
+### make input(s)
+if [ ! -f ${input0%.*}_$(echo ${extent[*]} | tr ' ' '_')_${width}_${height}_${samplemethod}.tif ]; then
+  gdalwarp -overwrite -te ${extent[*]} -ts ${width} ${height} -r ${samplemethod} -t_srs "${proj}" ${input0} ${input0%.*}_$(echo ${extent[*]} | tr ' ' '_')_${width}_${height}_${samplemethod}.tif
+fi
+# make frames 
+counter=1
+rm -f $PWD/../data/tmp/*.tif
+ls $PWD/../data/gdps/*${field}*.grib2 | while read file; do
+  gdaldem color-relief -alpha -f 'GRIB' -of 'GTiff' --config GDAL_PAM_ENABLED NO ${file} ${colorfile} /vsistdout/ | gdalwarp -overwrite -f 'GTiff' -of 'GTiff' -te ${extent[*]} -ts ${width} ${height} -r ${samplemethod} --config GDAL_PAM_ENABLED NO -co PROFILE=BASELINE /vsistdin/ $PWD/../data/tmp/$(printf "%06d" ${counter}).tif
+  (( counter = counter + 1 ))
+done
+# imagemagick
+ls $PWD/../data/tmp/*.tif | while read file; do
+  convert -quiet -gravity Center -composite -compose Screen ${input0%.*}_$(echo ${extent[*]} | tr ' ' '_')_${width}_${height}_${samplemethod}.tif ${file} ${file}
+done
+
 ### make video
-# ticker (drawtext)
-ffmpeg -y -f lavfi -i color=c=${color2}:s=${width}x${height} -filter_complex "drawtext=fontsize=h/3: text='(͡°͜ʖ͡°)': x=(W/2)-(text_w/2): y=(H/2)-(text_h/2): enable=lt(t\,1), drawtext=fontsize=h/3: fontfile=${fontfile}: textfile=$PWD/../data/tmp/ticker1.txt: x=W-((W+text_w)/(${time}/t)): y=(H/1)-(text_h), drawtext=fontsize=h/3: fontfile=${fontfile}: textfile=$PWD/../data/tmp/ticker0.txt: x=W-((W+text_w)/(${time}/t)): y=(H/2)-(text_h/2), drawtext=fontsize=h/3: fontfile=${fontfile}: textfile=$PWD/../data/tmp/ticker2.txt: x=W-((W+text_w)/(${time}/t)): y=(H/3)-(text_h)" -t ${time} -s ${width}x${height} -c:v libx264 -crf 23 -pix_fmt yuv420p -preset fast -threads 0 -movflags +faststart $PWD/../ticker_$(date +%m_%d_%H%M).mp4
-# ticker (multiple drawtext)
-#ffmpeg -y -f lavfi -i color=c=${color2}:s=${width}x${height} -vf "[0:v][1:v] overlay=W-w : H-((H+h)/(${time}/t)) [v]; [v] drawbox=x=0:y=0:w=iw:h=60:color=${color2}:t=max [v]; [v] drawbox=x=0:y=(ih-60):w=iw:h=60:color=${color2}:t=max [v]; [v] drawtext=fontsize=40: fontcolor=${fontcolor}: fontfile=${fontfile}: text='GCLUB WORLD WEATHER': x=(w-text_w)/2: y=15 [v]; [v] drawtext=fontsize=40: fontcolor=${fontcolor}: fontfile=${fontfile}: text='%{localtime\:%a %D %H%M %Z}': x=(w-text_w)/2: y=h-(line_h)-5 [v]" -map "[v]" -t ${time} -s ${width}x${height} -c:v libx264 -crf 23 -pix_fmt yuv420p -preset fast -threads 0 -movflags +faststart $PWD/../scroller_$(date +%m_%d_%H%M).mp4
-# ticker (single image)
-#ffmpeg -y -f lavfi -i color=c=${color2}:s=${width}x${height} -i $PWD/../data/tmp/ticker0.png -i $PWD/../data/tmp/ticker1.png -filter_complex "[0:v][1:v] overlay=W-((W+w)/(${time}/t)):(H-h)/2 [v]; [v][2:v] overlay=W-((W+w)/(${time}/t)):(H-h)/3 [v]" -map "[v]" -t ${time} -s ${width}x${height} -c:v libx264 -crf 23 -pix_fmt yuv420p -preset fast -threads 0 -movflags +faststart $PWD/../ticker_$(date +%m_%d_%H%M).mp4
-# ticker (multiple images)
-#ffmpeg -y -f lavfi -i color=c=${color2}:s=${width}x${height} -i $PWD/../data/tmp/ticker0.png -i $PWD/../data/tmp/ticker1.png -i $PWD/../data/tmp/ticker2.png -filter_complex "[0:v][1:v] overlay=W-((W+w)/(${time}/t)):(H-h)/2 [v]; [v][2:v] overlay=W-((W+w)/(${time}/t)):(H-h)/3 [v]; [v][3:v] overlay=W-((W+w)/(${time}/t)):(H-h)/1.5 [v]; [v] minterpolate='fps=60' [v]" -map "[v]" -t ${time} -s ${width}x${height} -c:v libx264 -crf 23 -pix_fmt yuv420p -preset fast -threads 0 -movflags +faststart $PWD/../ticker_$(date +%m_%d_%H%M).mp4
-
-
-##### overlay #####
-### text to image
-psql -d world -c "\COPY (SELECT CONCAT(UPPER(a.nameascii), ', ', UPPER(a.adm1name), ', ', a.iso_a2), CONCAT('Now: ', round(b.temp), '°C ', a.wx_full), CONCAT('$(date +%a): ', CASE WHEN round(b.temp) < c.day1_tmin THEN round(b.temp) ELSE c.day1_tmin END, '/', CASE WHEN round(b.temp) > c.day1_tmax THEN round(b.temp) ELSE c.day1_tmax END, '°C ', INITCAP(c.day1_wx)), CONCAT('$(date --date="+1 day" +%a): ', c.day2_tmin, '/', c.day2_tmax, '°C ', INITCAP(c.day2_wx)), CONCAT('$(date --date="+2 day" +%a): ', c.day3_tmin, '/', c.day3_tmax, '°C ', INITCAP(c.day3_wx)) FROM places a, metar b, places_gdps_utc c WHERE a.metar_id = b.station_id AND a.ogc_fid = c.ogc_fid AND a.nameascii = '${place}') TO STDOUT;" | tr '\t' '\n' | head -c -1 | convert -gravity Center -size ${width}x${height} -background ${color1} -fill ${fontcolor} -undercolor ${undercolor} -font "${fontfile}" -pointsize 40 -interline-spacing 0.8 caption:@- $PWD/../data/tmp/text.png
-# make video
-#ffmpeg -y -i ${videoname} -i $PWD/../data/tmp/text.png -filter_complex "[0:v][1:v] overlay [v]" -map "[v]" -s ${width}x${height} -c:v libx264 -crf 23 -pix_fmt yuv420p -preset fast -threads 0 -movflags +faststart $PWD/../overlay_$(date +%m_%d_%H%M).mp4
-ffmpeg -y -f lavfi -i color=c=${color2}:s=${width}x${height} -i $PWD/../data/tmp/text.png -filter_complex "[0:v][1:v] overlay [v]" -map "[v]" -s ${width}x${height} -t ${time} -c:v libx264 -crf 23 -pix_fmt yuv420p -preset fast -threads 0 -movflags +faststart $PWD/../overlay_$(date +%m_%d_%H%M).mp4
-
+# multiple inputs
+#ffmpeg -y -r ${rate} -i ${input0%.*}_${width}_${height}_${samplemethod}.tif -i $PWD/../data/tmp/%06d.tif -filter_complex "[0:v][1:v] overlay=W-w:H-h" -s ${width}x${height} -c:v libx264 -crf 23 -pix_fmt yuv420p -preset fast -threads 0 -movflags +faststart $PWD/../${field}_$(date +%m_%d_%H%M).mp4
+# one input
+#ffmpeg -y -r ${rate} -i $PWD/../data/tmp/%06d.tif -s ${width}x${height} -c:v libx264 -crf 23 -pix_fmt yuv420p -preset fast -threads 0 -movflags +faststart $PWD/../${field}_$(date +%m_%d_%H%M).mp4
+# text overlay
+#ffmpeg -y -r ${rate} -loop 1 -i $PWD/../data/tmp/%06d.tif -vf "drawtext=fontsize=${fontsize1}: fontfile=${fontfile}: textfile=$PWD/../data/tmp/ticker.txt: x=W-((W+text_w)/(${time}/t)): y=(H/2)-(text_h/2)" -t ${time} -s ${width}x${height} -c:v libx264 -crf 23 -pix_fmt yuv420p -preset fast -threads 0 -movflags +faststart $PWD/../${field}_$(date +%m_%d_%H%M).mp4
+# interpolate
+#ffmpeg -y -r ${rate}/5 -i $PWD/../data/tmp/%06d.tif -vf "minterpolate='fps=120'" -s ${width}x${height} -c:v libx264 -crf 23 -pix_fmt yuv420p -preset fast -threads 0 -movflags +faststart $PWD/../${field}_$(date +%m_%d_%H%M).mp4
 
 ### qgis slideshow
 files=$PWD/../data/qgis/places/%06d.png
@@ -119,19 +132,17 @@ ls ${files} | while read file; do echo $(cat ${file} | grep '@' | sed -e 's/^.*>
 #convert -size 10x1024 gradient:navy-snow $PWD/../data/colors/ice-sea.png
 #date_metar=$(date -r $PWD/../data/metar/metar.csv)
 
-# justify text
-cat ${file} | while read line; do 
-  id=($(echo ${line} | awk -F "," '{print $1}'))
-  words=($(echo ${line} | awk -F "," '{print $7}' | tr '-' ' '))
-  lon=($(echo ${line} | awk -F "," '{print $23}'))
-  lat=($(echo ${line} | awk -F "," '{print $22}'))
-  for ((a=0; a<${#words[@]}; a=a+1)); do
-    convert -background White -fill Black -font '/home/steve/.fonts/Google Webfonts/VT323-Regular.ttf' -size 1000x -interline-spacing 0 label:${words[a]^^} -trim +repage -resize 1000x -bordercolor White -border 10 /home/steve/Downloads/tmp/word${a}.ppm
-  done
-  convert -append $(ls -v /home/steve/Downloads/tmp/word*.ppm) /home/steve/Downloads/tmp/id_${id}.ppm
-  potrace --progress -b svg --alphamax 1.0 --color \#000000 --opttolerance 0.2 --turdsize 0 --turnpolicy min --unit 10 --output ${dir}/id_${id}.svg /home/steve/Downloads/tmp/id_${id}.ppm
+### make text (justified)
+rm -f $PWD/../data/tmp/line*.png
+rm -f $PWD/../data/tmp/text*.png
+cat $PWD/../data/tmp/text.txt | while IFS=$'\t' read -a array; do
+  echo "${array[2]}" | convert -background ${color1} -fill ${fontcolor} -font "${fontfile}" -size $(( ${width} / 2 ))x -interline-spacing 0 label:@- -trim +repage -resize $(( ${width} / 2 ))x $PWD/../data/tmp/line1.png
+  echo "${array[5]}/${array[6]}°C ${array[7]}" | convert -background ${color1} -fill ${fontcolor} -font "${fontfile}" -size $(( ${width} / 2 ))x -interline-spacing 0 label:@- -trim +repage -resize $(( ${width} / 2 ))x $PWD/../data/tmp/line2.png
+  echo "${array[8]}/${array[9]}°C ${array[10]}" | convert -background ${color1} -fill ${fontcolor} -font "${fontfile}" -size $(( ${width} / 2 ))x -interline-spacing 0 label:@- -trim +repage -resize $(( ${width} / 2 ))x $PWD/../data/tmp/line3.png
+  echo "${array[11]}/${array[12]}°C ${array[13]}" | convert -background ${color1} -fill ${fontcolor} -font "${fontfile}" -size $(( ${width} / 2 ))x -interline-spacing 0 label:@- -trim +repage -resize $(( ${width} / 2 ))x $PWD/../data/tmp/line4.png
+  convert -append $(ls -v $PWD/../data/tmp/line*.png) $PWD/../data/tmp/text_${array[0]}_${array[1]}.png
+  rm -f $PWD/../data/tmp/line*.png
 done
-convert -gravity Center -append $(ls -v $PWD/../data/tmp/*.ppm) $PWD/../data/tmp/scroller.png
 
 #-e 's/<\/svg>/<text text-anchor="end" fill="#000000" stroke="none" fill-opacity="1" font-size="20" font-weight="870" xml:space="preserve" font-family="Montserrat" font-style="normal" x="99%" y="99%">Updated:'"${date_metar}"'<\/text>\n<\/svg>/g'
 
