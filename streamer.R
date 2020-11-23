@@ -1,7 +1,6 @@
 ### libraries
 library(rpostgis)
 library(RPostgreSQL)
-
 library(rmapshaper)
 library(sf)
 library(smoothr)
@@ -10,9 +9,6 @@ library(smoothr)
 ### get data
 db <- dbConnect(dbDriver("PostgreSQL"), user = 'steve', dbname = 'world')
 countries <- pgGetGeom(db, c("public", "countries"), geom = "wkb_geometry", gid = "ogc_fid", query=NULL)
-#gdps <- pgGetGeom(db, c("public", "places"), geom = "wkb_geometry", gid = "ogc_fid", query=NULL)
-#metar <- pgGetGeom(db, c("public", "places"), geom = "wkb_geometry", gid = "ogc_fid", query=NULL)
-#places <- pgGetGeom(db, c("public", "places"), geom = "wkb_geometry", gid = "ogc_fid", query=NULL)
 #states <- st_read('/home/steve/Public/maps/naturalearth/10m_cultural/ne_10m_admin_1_states_provinces_lakes.shp', layer='ne_10m_admin_1_states_provinces_lakes')
 
 
