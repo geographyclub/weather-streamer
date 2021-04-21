@@ -13,9 +13,9 @@ mytable=metar
 psql -d world -c "DROP TABLE IF EXISTS ${mytable};"
 psql -d world -c "CREATE TABLE ${mytable}(station_id text, obs_time date, lat float8, lon float8, temp float8, dewpoint float8, wind_dir int, wind_sp int, visibility float8, altim float8, pressure float8, wx text, sky text, precip float8, elevation float8, wx_split text);"
 psql -d world -c "COPY ${mytable} FROM '$PWD/../data/metar/metar.csv' DELIMITER ',' CSV HEADER;"
-psql -d world -c "SELECT AddGeometryColumn('${mytable}','wkb_geometry2',4326,'POINT',2);"
-psql -d world -c "UPDATE ${mytable} SET wkb_geometry2 = ST_SetSRID(ST_MakePoint(lon,lat),4326);"
-psql -d world -c "CREATE INDEX ${mytable}_gid ON ${mytable} USING GIST (wkb_geometry2);"
+psql -d world -c "SELECT AddGeometryColumn('${mytable}','geom2',4326,'POINT',2);"
+psql -d world -c "UPDATE ${mytable} SET geom2 = ST_SetSRID(ST_MakePoint(lon,lat),4326);"
+psql -d world -c "CREATE INDEX ${mytable}_gid ON ${mytable} USING GIST (geom2);"
 
 ##### metar codes #####
 psql -d world -c "ALTER TABLE metar ADD COLUMN wx_full text, ADD COLUMN wx_full_1 text, ADD COLUMN wx_full_2 text, ADD COLUMN wx_full_3 text, ADD COLUMN wx_full_4 text, ADD COLUMN wx_full_5 text;"
@@ -32,8 +32,8 @@ psql -d world -c "UPDATE metar SET wx_full = NULL WHERE wx_full = '';"
 
 ##### join codes #####
 psql -d world -c "ALTER TABLE places ADD COLUMN IF NOT EXISTS metar_id text, ADD COLUMN IF NOT EXISTS metar_id2 text, ADD COLUMN IF NOT EXISTS wx_full text;"
-psql -d world -c "UPDATE places a SET metar_id = (SELECT b.station_id FROM ${mytable} b ORDER BY a.wkb_geometry <-> b.wkb_geometry2 LIMIT 1);"
-psql -d world -c "UPDATE places a SET metar_id2 = (SELECT b.station_id FROM ${mytable} b WHERE a.metar_id != b.station_id ORDER BY a.wkb_geometry <-> b.wkb_geometry2 LIMIT 1);"
+psql -d world -c "UPDATE places a SET metar_id = (SELECT b.station_id FROM ${mytable} b ORDER BY a.geom <-> b.geom2 LIMIT 1);"
+psql -d world -c "UPDATE places a SET metar_id2 = (SELECT b.station_id FROM ${mytable} b WHERE a.metar_id != b.station_id ORDER BY a.geom <-> b.geom2 LIMIT 1);"
 psql -d world -c "UPDATE places a SET wx_full = b.wx_full from metar b WHERE a.metar_id = b.station_id;"
 psql -d world -c "UPDATE places a SET wx_full = b.wx_full from metar b WHERE a.wx_full IS NULL AND a.metar_id2 = b.station_id;"
 psql -d world -c "UPDATE places a SET wx_full = b.wx_full from metar b WHERE a.wx_full IS NULL AND a.metar_id2 = b.station_id;"
@@ -43,3 +43,6 @@ psql -d world -c "UPDATE places a SET wx_full = b.wx_full from metar b WHERE a.w
 #psql -d world -c "UPDATE metar a SET wind_full = (SELECT b.abbrev || ' ' || a.wind_sp || 'KT' FROM compass_points b WHERE a.wind_dir <= b.maximum AND a.wind_dir >= b.minimum);"
 #psql -d world -c "UPDATE metar SET wind_full = 'N' WHERE wind_dir = 0 OR wind_dir = 360;"
 
+### metar_wx_codes
+#psql -d world -c "CREATE TABLE metar_wx_codes(type text, wx_code text, wx_full text);"
+#psql -d world -c "COPY metar_wx_codes FROM '$PWD/../data/metar/metar_wx_codes.csv';"

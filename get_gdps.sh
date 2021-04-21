@@ -3,14 +3,15 @@
 ##### download #####
 #dir=$PWD/../data/gdps/utc$(date -u +"%Y%m%d")
 #mydate=$(date -u +"%Y%m%d")
+modelhour=00
 dir=$PWD/../data/gdps
 mydate=$(date +"%Y%m%d")
 rm -f ${dir}/*
 for a in $(seq -f "%03g" 3 3 81); do
-  wget -P ${dir} https://dd.weather.gc.ca/model_gem_global/25km/grib2/lat_lon/00/${a}/CMC_glb_TMP_TGL_2_latlon.24x.24_${mydate}00_P${a}.grib2;
-  wget -P ${dir} https://dd.weather.gc.ca/model_gem_global/25km/grib2/lat_lon/00/${a}/CMC_glb_PRATE_SFC_0_latlon.24x.24_${mydate}00_P${a}.grib2
-  wget -P ${dir} https://dd.weather.gc.ca/model_gem_global/25km/grib2/lat_lon/00/${a}/CMC_glb_TCDC_SFC_0_latlon.24x.24_${mydate}00_P${a}.grib2
-  wget -P ${dir} https://dd.weather.gc.ca/model_gem_global/25km/grib2/lat_lon/00/${a}/CMC_glb_PRMSL_MSL_0_latlon.24x.24_${mydate}00_P${a}.grib2
+  wget -P ${dir} https://dd.weather.gc.ca/model_gem_global/25km/grib2/lat_lon/${modelhour}/${a}/CMC_glb_TMP_TGL_2_latlon.24x.24_${mydate}${modelhour}_P${a}.grib2;
+  wget -P ${dir} https://dd.weather.gc.ca/model_gem_global/25km/grib2/lat_lon/${modelhour}/${a}/CMC_glb_PRATE_SFC_0_latlon.24x.24_${mydate}${modelhour}_P${a}.grib2
+  wget -P ${dir} https://dd.weather.gc.ca/model_gem_global/25km/grib2/lat_lon/${modelhour}/${a}/CMC_glb_TCDC_SFC_0_latlon.24x.24_${mydate}${modelhour}_P${a}.grib2
+  wget -P ${dir} https://dd.weather.gc.ca/model_gem_global/25km/grib2/lat_lon/${modelhour}/${a}/CMC_glb_PRMSL_MSL_0_latlon.24x.24_${mydate}${modelhour}_P${a}.grib2
 done
 
 ##### extract #####
@@ -52,3 +53,13 @@ psql -d world -c "UPDATE places_gdps_utc SET day3_wx = CASE WHEN day3_pmax > 0 A
 #saga_cmd shapes_grid 5 -GRID $PWD/../data/gdps/CMC_glb_PRMSL_MSL_0_latlon.24x.24_2020100300_P${mytime}.grib2 -CONTOUR $PWD/../data/gdps/contour_pressure -SCALE 3 -ZSTEP 100
 #saga_cmd shapes_grid 9 -GRID ${file}_pressure.nc -MINIMA ${file}_pressure_minima -MAXIMA ${file}_pressure_maxima
 
+##### utc -> local #####
+#ogr2ogr -f 'CSV' -lco 'SEPARATOR=TAB' ../data/places.csv ~/maps/naturalearth/natural_earth_vector.gpkg ne_10m_populated_places
+#rm -f $PWD/../data/places_utc*
+#awk -F '\t' '{print $176}' $PWD/../data/places.csv | sed -e 's/UTC//g' -e 's/:.*$//g' -e 's/±//g' -e 's/+//g' | while read a; do seq -f '%03g' -s ' ' $(echo "${a} - (${a}%3)" | bc) 3 $(echo "${a} - (${a}%3) + 21" | bc) | sed -e 's/-[0-9]\+ //g' -e 's/^/"/g' -e 's/$/"/g' >> $PWD/../data/places_utc_day1.txt; done
+#awk -F '\t' '{print $176}' $PWD/../data/places.csv | sed -e 's/UTC//g' -e 's/:.*$//g' -e 's/±//g' -e 's/+//g' | while read a; do seq -f '%03g' -s ' ' $(echo "${a} - (${a}%3) + 24" | bc) 3 $(echo "${a} - (${a}%3) + 45" | bc) | sed -e 's/-[0-9]\+ //g' -e 's/^/"/g' -e 's/$/"/g' >> $PWD/../data/places_utc_day2.txt; done
+#awk -F '\t' '{print $176}' $PWD/../data/places.csv | sed -e 's/UTC//g' -e 's/:.*$//g' -e 's/±//g' -e 's/+//g' | while read a; do seq -f '%03g' -s ' ' $(echo "${a} - (${a}%3) + 48" | bc) 3 $(echo "${a} - (${a}%3) + 69" | bc) | sed -e 's/-[0-9]\+ //g' -e 's/^/"/g' -e 's/$/"/g' >> $PWD/../data/places_utc_day3.txt; done
+#awk -F '\t' 'BEGIN {OFS=","} {print $1 ',' $176}' $PWD/../data/places.csv | paste -d ',' - $PWD/../data/places_utc_day1.txt $PWD/../data/places_utc_day2.txt $PWD/../data/places_utc_day3.txt > $PWD/../data/places_utc.csv
+#psql -d world -c "DROP TABLE IF EXISTS places_utc;"
+#psql -d world -c "CREATE TABLE places_utc(ogc_fid int, utc text, day1 text, day2 text, day3 text);"
+#psql -d world -c "COPY places_utc FROM '$PWD/../data/places_utc.csv' CSV;"
