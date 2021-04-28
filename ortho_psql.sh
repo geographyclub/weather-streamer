@@ -8,17 +8,24 @@ width=512
 rm -f ${PWD}/../data/tmp/*
 
 ### countries
-psql -d world -c "\COPY (SELECT a.fid, a.nameascii, round(b.temp), b.wx_full, CASE WHEN round(b.temp) < c.day1_tmin THEN round(b.temp) ELSE c.day1_tmin END, CASE WHEN round(b.temp) > c.day1_tmax THEN round(b.temp) ELSE c.day1_tmax END, c.day1_wx, c.day2_tmin, c.day2_tmax, c.day2_wx, c.day3_tmin, c.day3_tmax, c.day3_wx FROM places a, metar b, places_gdps_utc c WHERE a.metar_id = b.station_id AND a.fid = c.fid AND a.fid IN (${fid})) TO STDOUT DELIMITER E'\t';"
 
+#psql -d world -c "\COPY (SELECT adm0_a3, ST_X(ST_Centroid(ST_Transform(geom,'EPSG:3857','EPSG:4326'))), ST_Y(ST_Centroid(ST_Transform(geom,'EPSG:3857','EPSG:4326'))), ST_AsSVG(ST_Transform(geom,'EPSG:3857','EPSG:4326')) FROM countries_pocket_atlas) TO STDOUT DELIMITER E'\t';" 
 
-cat > ${PWD}/../data/tmp/layer0.svg <<- EOM
+psql -d world -c "\COPY (SELECT adm0_a3, ST_X(ST_Centroid(ST_Transform(geom,'EPSG:3857','EPSG:4326'))), ST_Y(ST_Centroid(ST_Transform(geom,'EPSG:3857','EPSG:4326'))), ST_AsSVG(ST_Transform((ST_Dump(geom)).geom,'EPSG:3857','EPSG:4326')) FROM countries_pocket_atlas) TO STDOUT DELIMITER E'\t';" | while IFS=$'\t' read -a array; do
+
+cat > ${PWD}/../data/tmp/layer_${array[0]}.svg <<- EOM
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <svg width="${width}" height="${height}" viewBox="-180 -90 360 180" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.2" baseProfile="tiny">
 EOM
-ogrinfo -sql 'SELECT AsSVG(geom,1) FROM ne_110m_admin_0_countries_lakes' ${dir}/maps/naturalearth/natural_earth_vector.gpkg | grep '(String) = ' | grep -v 'null' | sed -e 's/^.*= /<path d="/g' -e 's/$/" vector-effect="non-scaling-stroke" fill="none" stroke="#FFF" stroke-width="0.4px"\/>/g' >> ${dir}/tmp/layer0.svg
-echo '</svg>' >> ${dir}/tmp/layer0.svg
-convert -density 200 -background none ${dir}/tmp/layer0.svg ${dir}/tmp/tmp0.tif
-gdal_translate -of 'GTiff' -a_ullr -180 90 180 -90 ${dir}/tmp/tmp0.tif /vsistdout/ | gdalwarp -overwrite -dstalpha --config GDAL_PAM_ENABLED NO -co PROFILE=BASELINE -f 'GTiff' -of 'GTiff' -s_srs 'EPSG:4326' -t_srs 'EPSG:4326' -ts 0 ${height} /vsistdin/ ${dir}/tmp/layer0.tif
+
+echo ${array[3]} | sed -e 's/^/<path d="/g' -e 's/$/" vector-effect="non-scaling-stroke" fill="none" stroke="#000" stroke-width="0.4px"\/>/g' >> ${PWD}/../data/tmp/layer_${array[0]}.svg
+echo '</svg>' >> ${PWD}/../data/tmp/layer_${array[0]}.svg
+
+convert -density 200 -background white ${PWD}/../data/tmp/layer_${array[0]}.svg ${PWD}/../data/tmp/layer_tmp.tif
+
+gdal_translate -of 'GTiff' -a_ullr -180 90 180 -90 ${PWD}/../data/tmp/layer_tmp.tif /vsistdout/ | gdalwarp -overwrite -dstalpha --config GDAL_PAM_ENABLED NO -co PROFILE=BASELINE -f 'GTiff' -of 'GTiff' -s_srs 'EPSG:4326' -t_srs '+proj=ortho +lat_0='${array[2]}' +lon_0='${array[1]}' +ellps='sphere'' -r cubicspline -ts ${width} ${height} /vsistdin/ ${PWD}/../data/tmp/layer_${array[0]}.tif
+
+done
 
 
 ##########################
